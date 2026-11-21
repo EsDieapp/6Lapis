@@ -1,4 +1,6 @@
 
+import { DurableObject } from "cloudflare:workers";
+
 const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -96,11 +98,7 @@ status();
 </body>
 </html>`;
 
-export class BotState {
-  constructor(ctx) {
-    this.ctx = ctx;
-  }
-
+export class BotState extends DurableObject {
   async fetch(request) {
     const current = await this.ctx.storage.get("status") || "STOPPED";
     const emergency = await this.ctx.storage.get("emergency") || false;
@@ -145,6 +143,10 @@ export default {
       });
     }
 
+    if (url.pathname === "/health") {
+      return Response.json({ healthy: true, trading: false });
+    }
+
     const id = env.BOT_STATE.idFromName("6lapis-main");
     const state = env.BOT_STATE.get(id);
 
@@ -165,11 +167,7 @@ export default {
       }));
     }
 
-    if (url.pathname === "/health") {
-      return Response.json({ healthy: true, trading: false });
-    }
-
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 };
-                  
+   
