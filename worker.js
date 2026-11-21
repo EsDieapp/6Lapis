@@ -8,20 +8,23 @@ const html = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>6LAPIS Control</title>
 <style>
-body{margin:0;background:#080b12;color:#fff;font-family:Arial;padding:20px}
+body{margin:0;background:#080b12;color:#fff;font-family:Arial;padding:18px}
 main{max-width:550px;margin:auto}
 header{display:flex;justify-content:space-between;align-items:center}
 h1{letter-spacing:3px}
 .tag{color:#55e6a5;border:1px solid #246e50;padding:8px;border-radius:20px;font-size:12px}
-.card{background:#151b27;padding:18px;border-radius:13px;margin:12px 0}
+.card{background:#151b27;padding:17px;border-radius:13px;margin:12px 0}
 .small{color:#9aa6ba;font-size:12px}
 .value{font-size:21px;font-weight:bold;margin-top:9px}
 input{box-sizing:border-box;width:100%;padding:13px;border-radius:8px;border:1px solid #38445a;background:#0c1220;color:white}
-button{width:100%;padding:15px;border:0;border-radius:9px;margin:6px 0;font-weight:bold}
+button{width:100%;padding:14px;border:0;border-radius:9px;margin:6px 0;font-weight:bold}
 .start{background:#159b68;color:white}
 .stop{background:#38445a;color:white}
 .emergency{background:#a83242;color:white}
-button:disabled{opacity:.4}
+.scan{background:#2468b4;color:white}
+.result{border-top:1px solid #30394a;padding:12px 0}
+.score{font-weight:bold;color:#55e6a5}
+.buy{color:#55e6a5}.wait{color:#ffd166}.avoid{color:#ff6878}
 </style>
 </head>
 <body>
@@ -39,16 +42,6 @@ button:disabled{opacity:.4}
 </div>
 
 <div class="card">
-<div class="small">SALDO</div>
-<div class="value">Belum tersedia</div>
-</div>
-
-<div class="card">
-<div class="small">PNL</div>
-<div class="value">Belum tersedia</div>
-</div>
-
-<div class="card">
 <div class="small">TOKEN KONTROL</div>
 <input id="token" type="password" placeholder="Masukkan token kontrol">
 </div>
@@ -58,6 +51,14 @@ button:disabled{opacity:.4}
 <button class="stop" onclick="control('STOP')">STOP</button>
 <button class="emergency" onclick="control('EMERGENCY_STOP')">EMERGENCY STOP</button>
 <p id="message" class="small">Kontrol belum terhubung.</p>
+</div>
+
+<div class="card">
+<h3>SCANNER SOLANA V1</h3>
+<p class="small">Mode simulasi • Data contoh, bukan data pasar langsung</p>
+<button class="scan" onclick="scan()">MULAI SCAN SIMULASI</button>
+<p id="scanMessage" class="small">Belum ada pemindaian.</p>
+<div id="results"></div>
 </div>
 
 <p class="small">6LAPIS • SIMULATION ONLY • NO REAL TRADING</p>
@@ -71,18 +72,13 @@ async function control(action){
  try{
   const r=await fetch("/api/control",{
    method:"POST",
-   headers:{
-    "Content-Type":"application/json",
-    "Authorization":"Bearer "+token
-   },
+   headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
    body:JSON.stringify({action})
   });
   const data=await r.json();
   message.textContent=data.message || data.error || "Selesai";
   await status();
- }catch(e){
-  message.textContent="Koneksi gagal";
- }
+ }catch(e){message.textContent="Koneksi gagal";}
 }
 async function status(){
  try{
@@ -92,6 +88,30 @@ async function status(){
  }catch(e){
   document.getElementById("status").textContent="OFFLINE";
  }
+}
+async function scan(){
+ const box=document.getElementById("results");
+ const msg=document.getElementById("scanMessage");
+ msg.textContent="Memindai data simulasi...";
+ box.innerHTML="";
+ try{
+  const r=await fetch("/api/scanner");
+  const d=await r.json();
+  msg.textContent="Pemindaian selesai: "+d.tokens.length+" kandidat contoh.";
+  for(const t of d.tokens){
+   const div=document.createElement("div");
+   div.className="result";
+   const cls=t.signal.toLowerCase();
+   div.innerHTML=
+    "<b>"+t.name+"</b><br>"+
+    "<span class='small'>"+t.type+"</span><br>"+
+    "Momentum: "+t.momentum+"/100<br>"+
+    "Risiko: "+t.risk+"/100<br>"+
+    "Skor: <span class='score'>"+t.score+"/100</span><br>"+
+    "Sinyal: <b class='"+cls+"'>"+t.signal+"</b>";
+   box.appendChild(div);
+  }
+ }catch(e){msg.textContent="Scanner gagal terhubung.";}
 }
 status();
 </script>
@@ -111,9 +131,7 @@ export class BotState extends DurableObject {
 
     if (body.action === "START") {
       if (emergency) {
-        return Response.json({
-          error: "Emergency lock aktif"
-        }, { status: 423 });
+        return Response.json({ error: "Emergency lock aktif" }, { status: 423 });
       }
       await this.ctx.storage.put("status", "RUNNING");
     } else if (body.action === "STOP") {
@@ -133,6 +151,12 @@ export class BotState extends DurableObject {
   }
 }
 
+const sampleTokens = [
+  { name: "SIM-NEW-001", type: "Token baru", momentum: 78, risk: 32, score: 72, signal: "WAIT" },
+  { name: "SIM-NEW-002", type: "Token baru", momentum: 42, risk: 86, score: 18, signal: "AVOID" },
+  { name: "SIM-MOMENTUM-001", type: "Token lama mulai ramai", momentum: 91, risk: 24, score: 84, signal: "BUY" }
+];
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -145,6 +169,14 @@ export default {
 
     if (url.pathname === "/health") {
       return Response.json({ healthy: true, trading: false });
+    }
+
+    if (url.pathname === "/api/scanner" && request.method === "GET") {
+      return Response.json({
+        mode: "SIMULATION",
+        liveData: false,
+        tokens: sampleTokens
+      });
     }
 
     const id = env.BOT_STATE.idFromName("6lapis-main");
@@ -170,4 +202,4 @@ export default {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 };
-   
+        
