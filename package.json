@@ -2,9 +2,9 @@
   "name": "6lapis-bot",
   "version": "1.0.0",
   "description": "6LAPIS Automated Memecoin Trading System",
-  "main": "src/index.js",
+  "main": "src/src/server.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node src/src/server.js",
     "test": "node --test"
   },
   "engines": {
